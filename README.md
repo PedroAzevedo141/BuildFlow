@@ -54,3 +54,10 @@ Rodar com Docker (Postgres + API)
 - Containers criados:
   - `buildflow-postgres` (Postgres 16)
   - `buildflow-api` (FastAPI/uvicorn)
+
+Testes
+- Instalar dependências de teste (já no `requirements.txt`).
+- Rodar: `pytest -q`
+- O suite inclui:
+  - Testes de unidade para cálculo de total (`app/services.py`).
+  - Testes de integração dos endpoints via `TestClient`.

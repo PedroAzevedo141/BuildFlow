@@ -8,6 +8,7 @@ from sqlalchemy.exc import OperationalError
 from app.database import Base, engine, get_db
 from app import models
 from app.schemas import ProdutoOut, PedidoCreateIn, PedidoOut, ItemPedidoOut
+from app.services import compute_total
 
 
 app = FastAPI(title="BuildFlow API", version="0.1.0")
@@ -60,10 +61,10 @@ def criar_pedido(payload: PedidoCreateIn, db: Session = Depends(get_db)):
     if not payload.itens:
         raise HTTPException(status_code=400, detail="Pedido deve conter ao menos um item")
 
-    # Validar produtos e calcular total
-    total = Decimal("0.00")
+    # Validar produtos e preparar itens
     itens_out: List[ItemPedidoOut] = []
     itens_models: list[models.ItemPedido] = []
+    precos_e_qtds: list[tuple[Decimal, int]] = []
 
     for item in payload.itens:
         produto = db.query(models.Produto).filter(models.Produto.id == item.produto_id).first()
@@ -73,7 +74,7 @@ def criar_pedido(payload: PedidoCreateIn, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Quantidade deve ser maior que zero")
 
         preco_unit = Decimal(produto.preco)
-        total += preco_unit * item.quantidade
+        precos_e_qtds.append((preco_unit, item.quantidade))
         itens_models.append(
             models.ItemPedido(
                 produto_id=produto.id,
@@ -89,6 +90,7 @@ def criar_pedido(payload: PedidoCreateIn, db: Session = Depends(get_db)):
             )
         )
 
+    total = compute_total(precos_e_qtds)
     pedido = models.Pedido(status="criado", total=total)
     pedido.itens = itens_models
     db.add(pedido)
