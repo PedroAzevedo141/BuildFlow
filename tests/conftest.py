@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app import models
+from app.cache import get_redis_client
 from app.database import Base, get_db
 from app.messaging import get_queue_publisher
 from main import app
@@ -19,6 +20,17 @@ class InMemoryPublisher:
 
     def publish_pedido(self, pedido_id: int, itens):
         self.messages.append({"pedido_id": pedido_id, "itens": itens})
+
+
+class FakeCache:
+    def __init__(self):
+        self.store = {}
+
+    def get(self, key):
+        return self.store.get(key)
+
+    def setex(self, key, ttl, value):
+        self.store[key] = value
 
 
 def _make_test_session():
@@ -58,8 +70,10 @@ def create_client_with_db():
     app.dependency_overrides[get_db] = override_get_db(SessionLocal)
     publisher = InMemoryPublisher()
     app.dependency_overrides[get_queue_publisher] = lambda: publisher
+    cache = FakeCache()
+    app.dependency_overrides[get_redis_client] = lambda: cache
     client = TestClient(app)
-    return client, SessionLocal, engine, publisher
+    return client, SessionLocal, engine, publisher, cache
 
 
 def cleanup_overrides():

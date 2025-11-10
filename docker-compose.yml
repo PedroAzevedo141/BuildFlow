@@ -31,6 +31,17 @@ services:
       timeout: 5s
       retries: 5
 
+  cache:
+    image: redis:7
+    container_name: buildflow-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   app:
     build: .
     container_name: buildflow-api
@@ -40,11 +51,13 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@db:5432/${POSTGRES_DB:-buildflow}}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@queue:5672/}
       PEDIDOS_QUEUE: ${PEDIDOS_QUEUE:-pedidos}
+      REDIS_URL: ${REDIS_URL:-redis://cache:6379/0}
     ports:
       - "8000:8000"
     depends_on:
       - db
       - queue
+      - cache
 
   worker:
     build: .
@@ -56,9 +69,11 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@db:5432/${POSTGRES_DB:-buildflow}}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@queue:5672/}
       PEDIDOS_QUEUE: ${PEDIDOS_QUEUE:-pedidos}
+      REDIS_URL: ${REDIS_URL:-redis://cache:6379/0}
     depends_on:
       - db
       - queue
+      - cache
 
 volumes:
   pgdata:

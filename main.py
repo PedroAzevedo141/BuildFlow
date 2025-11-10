@@ -1,14 +1,16 @@
 import logging
 import time
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
+from redis import Redis
 
 from app import models
 from app.database import Base, engine, get_db
+from app.cache import cache_get, cache_set, get_redis_client
 from app.messaging import PedidoQueuePublisher, get_queue_publisher
 from app.schemas import ItemPedidoOut, PedidoCreateIn, PedidoOut, ProdutoOut
 from app.services import build_item_specs
@@ -47,9 +49,19 @@ def on_startup():
 
 
 @app.get("/produtos", response_model=List[ProdutoOut])
-def listar_produtos(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def listar_produtos(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    cache: Optional[Redis] = Depends(get_redis_client),
+):
+    cache_key = f"produtos:{skip}:{limit}"
+    cached = cache_get(cache, cache_key)
+    if cached is not None:
+        return cached
+
     produtos = db.query(models.Produto).offset(skip).limit(limit).all()
-    return [
+    data = [
         ProdutoOut(
             id=p.id,
             nome=p.nome,
@@ -58,6 +70,8 @@ def listar_produtos(skip: int = 0, limit: int = 100, db: Session = Depends(get_d
         )
         for p in produtos
     ]
+    cache_set(cache, cache_key, [item.dict() for item in data])
+    return data
 
 
 @app.post("/pedidos", response_model=PedidoOut, status_code=201)

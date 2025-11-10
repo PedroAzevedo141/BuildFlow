@@ -3,7 +3,7 @@ from worker import process_order_message
 
 
 def test_listar_produtos():
-    client, SessionLocal, _, _ = create_client_with_db()
+    client, SessionLocal, _, _, cache = create_client_with_db()
     try:
         with SessionLocal() as s:
             seed_products(s)
@@ -13,12 +13,22 @@ def test_listar_produtos():
         assert isinstance(data, list)
         assert len(data) >= 2
         assert {d["nome"] for d in data} >= {"Produto A", "Produto B"}
+
+        cache_key = "produtos:0:100"
+        assert cache_key in cache.store
+        cached_payload = cache.store[cache_key]
+        assert '"Produto A"' in cached_payload
+
+        # segundo request deve reutilizar cache (simulado)
+        resp_cached = client.get("/produtos")
+        assert resp_cached.status_code == 200
+        assert resp_cached.json() == data
     finally:
         cleanup_overrides()
 
 
 def test_criar_e_buscar_pedido():
-    client, SessionLocal, _, publisher = create_client_with_db()
+    client, SessionLocal, _, publisher, _ = create_client_with_db()
     try:
         with SessionLocal() as s:
             prods = seed_products(s)

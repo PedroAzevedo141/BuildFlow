@@ -36,11 +36,14 @@ Como rodar
 - 4) Suba o RabbitMQ (necessario para fila de pedidos). Exemplo usando Docker:
   - `docker run --name buildflow-rabbit -p 5672:5672 -p 15672:15672 -d rabbitmq:3-management`
   - (Opcional) Defina `RABBITMQ_URL` se quiser apontar para outra instancia (`amqp://user:pass@host:5672/vhost`). `PEDIDOS_QUEUE` define o nome da fila (padrao `pedidos`).
-- 5) Inicie o worker em um terminal dedicado:
+- 5) Suba o Redis para caching (opcional em dev, recomendado em prod). Exemplo usando Docker:
+  - `docker run --name buildflow-redis -p 6379:6379 -d redis:7`
+  - Ajuste `REDIS_URL` (`redis://host:6379/0`) e `PRODUTOS_CACHE_TTL` conforme necessidade.
+- 6) Inicie o worker em um terminal dedicado:
   - `python worker.py`
-- 6) Inicie a API em outro terminal:
+- 7) Inicie a API em outro terminal:
   - `uvicorn main:app --reload`
-- 7) Acesse a documentacao:
+- 8) Acesse a documentacao:
   - `http://127.0.0.1:8000/docs`
 
 Endpoints
@@ -58,6 +61,7 @@ Rodar com Docker (Postgres + API)
 - Acesse a API: `http://127.0.0.1:8000/docs`
 - Containers criados:
   - `buildflow-postgres` (Postgres 16)
+  - `buildflow-redis` (Redis 7)
   - `buildflow-rabbit` (RabbitMQ 3 + console em `http://localhost:15672`)
   - `buildflow-api` (FastAPI/uvicorn)
   - `buildflow-worker` (processamento assíncrono de pedidos)
