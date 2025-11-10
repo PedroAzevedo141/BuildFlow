@@ -19,6 +19,18 @@ services:
       timeout: 3s
       retries: 10
 
+  queue:
+    image: rabbitmq:3-management
+    container_name: buildflow-rabbit
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   app:
     build: .
     container_name: buildflow-api
@@ -26,10 +38,27 @@ services:
       - .env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@db:5432/${POSTGRES_DB:-buildflow}}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@queue:5672/}
+      PEDIDOS_QUEUE: ${PEDIDOS_QUEUE:-pedidos}
     ports:
       - "8000:8000"
     depends_on:
       - db
+      - queue
+
+  worker:
+    build: .
+    container_name: buildflow-worker
+    command: ["python", "worker.py"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@db:5432/${POSTGRES_DB:-buildflow}}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@queue:5672/}
+      PEDIDOS_QUEUE: ${PEDIDOS_QUEUE:-pedidos}
+    depends_on:
+      - db
+      - queue
 
 volumes:
   pgdata:

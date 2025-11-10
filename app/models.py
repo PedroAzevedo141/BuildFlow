@@ -23,9 +23,16 @@ class Pedido(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     status = Column(
-        Enum("criado", "processando", "pago", "cancelado", name="pedido_status"),
+        Enum(
+            "PENDENTE",
+            "PROCESSANDO",
+            "CRIADO",
+            "PAGO",
+            "CANCELADO",
+            name="pedido_status",
+        ),
         nullable=False,
-        default="criado",
+        default="PENDENTE",
     )
     total = Column(Numeric(12, 2), nullable=False, default=Decimal("0.00"))
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -44,4 +51,3 @@ class ItemPedido(Base):
 
     pedido = relationship("Pedido", back_populates="itens")
     produto = relationship("Produto", back_populates="itens")
-

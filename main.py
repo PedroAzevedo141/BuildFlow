@@ -1,17 +1,21 @@
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from decimal import Decimal
-from typing import List, Optional
+import logging
 import time
-from sqlalchemy.exc import OperationalError
+from decimal import Decimal
+from typing import List
 
-from app.database import Base, engine, get_db
+from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
+
 from app import models
-from app.schemas import ProdutoOut, PedidoCreateIn, PedidoOut, ItemPedidoOut
-from app.services import compute_total
+from app.database import Base, engine, get_db
+from app.messaging import PedidoQueuePublisher, get_queue_publisher
+from app.schemas import ItemPedidoOut, PedidoCreateIn, PedidoOut, ProdutoOut
+from app.services import build_item_specs
 
 
 app = FastAPI(title="BuildFlow API", version="0.1.0")
+logger = logging.getLogger(__name__)
 
 
 # Create tables on startup (demo convenience). In production use migrations.
@@ -57,45 +61,43 @@ def listar_produtos(skip: int = 0, limit: int = 100, db: Session = Depends(get_d
 
 
 @app.post("/pedidos", response_model=PedidoOut, status_code=201)
-def criar_pedido(payload: PedidoCreateIn, db: Session = Depends(get_db)):
+def criar_pedido(
+    payload: PedidoCreateIn,
+    db: Session = Depends(get_db),
+    publisher: PedidoQueuePublisher = Depends(get_queue_publisher),
+):
     if not payload.itens:
         raise HTTPException(status_code=400, detail="Pedido deve conter ao menos um item")
 
-    # Validar produtos e preparar itens
-    itens_out: List[ItemPedidoOut] = []
-    itens_models: list[models.ItemPedido] = []
-    precos_e_qtds: list[tuple[Decimal, int]] = []
+    itens_payload = [item.dict() for item in payload.itens]
+    try:
+        specs, total = build_item_specs(db, itens_payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    for item in payload.itens:
-        produto = db.query(models.Produto).filter(models.Produto.id == item.produto_id).first()
-        if not produto:
-            raise HTTPException(status_code=404, detail=f"Produto {item.produto_id} não encontrado")
-        if item.quantidade <= 0:
-            raise HTTPException(status_code=400, detail="Quantidade deve ser maior que zero")
-
-        preco_unit = Decimal(produto.preco)
-        precos_e_qtds.append((preco_unit, item.quantidade))
-        itens_models.append(
-            models.ItemPedido(
-                produto_id=produto.id,
-                quantidade=item.quantidade,
-                preco_unitario=preco_unit,
-            )
-        )
-        itens_out.append(
-            ItemPedidoOut(
-                produto_id=produto.id,
-                quantidade=item.quantidade,
-                preco_unitario=float(preco_unit),
-            )
-        )
-
-    total = compute_total(precos_e_qtds)
-    pedido = models.Pedido(status="criado", total=total)
-    pedido.itens = itens_models
+    pedido = models.Pedido(status="PENDENTE", total=total)
     db.add(pedido)
-    db.commit()
+
+    try:
+        db.flush()
+        publisher.publish_pedido(pedido.id, itens_payload)
+        db.commit()
+    except Exception as exc:  # pragma: no cover - defensive logging em produção
+        db.rollback()
+        logger.exception("Falha ao publicar pedido %s na fila", getattr(pedido, "id", "?"))
+        raise HTTPException(status_code=503, detail="Não foi possível enfileirar o pedido") from exc
+
     db.refresh(pedido)
+    itens_out = [
+        ItemPedidoOut(
+            produto_id=spec.produto_id,
+            quantidade=spec.quantidade,
+            preco_unitario=float(spec.preco_unitario),
+        )
+        for spec in specs
+    ]
 
     return PedidoOut(
         id=pedido.id,

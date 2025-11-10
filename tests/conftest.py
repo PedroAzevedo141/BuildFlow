@@ -1,15 +1,24 @@
 import os
 import sys
-from typing import Generator
+from typing import List
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from app.database import Base, get_db
 from app import models
+from app.database import Base, get_db
+from app.messaging import get_queue_publisher
 from main import app
+
+
+class InMemoryPublisher:
+    def __init__(self):
+        self.messages: List[dict] = []
+
+    def publish_pedido(self, pedido_id: int, itens):
+        self.messages.append({"pedido_id": pedido_id, "itens": itens})
 
 
 def _make_test_session():
@@ -47,8 +56,10 @@ def seed_products(session):
 def create_client_with_db():
     engine, SessionLocal = _make_test_session()
     app.dependency_overrides[get_db] = override_get_db(SessionLocal)
+    publisher = InMemoryPublisher()
+    app.dependency_overrides[get_queue_publisher] = lambda: publisher
     client = TestClient(app)
-    return client, SessionLocal, engine
+    return client, SessionLocal, engine, publisher
 
 
 def cleanup_overrides():

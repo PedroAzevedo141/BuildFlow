@@ -33,9 +33,14 @@ Como rodar
       - `$env:DATABASE_URL = "postgresql://dev:dev@localhost:5432/buildflow"`
     - Definir `DATABASE_URL` (CMD - somente sessao atual):
       - `set DATABASE_URL=postgresql://dev:dev@localhost:5432/buildflow`
-- 4) Inicie a API:
+- 4) Suba o RabbitMQ (necessario para fila de pedidos). Exemplo usando Docker:
+  - `docker run --name buildflow-rabbit -p 5672:5672 -p 15672:15672 -d rabbitmq:3-management`
+  - (Opcional) Defina `RABBITMQ_URL` se quiser apontar para outra instancia (`amqp://user:pass@host:5672/vhost`). `PEDIDOS_QUEUE` define o nome da fila (padrao `pedidos`).
+- 5) Inicie o worker em um terminal dedicado:
+  - `python worker.py`
+- 6) Inicie a API em outro terminal:
   - `uvicorn main:app --reload`
-- 5) Acesse a documentacao:
+- 7) Acesse a documentacao:
   - `http://127.0.0.1:8000/docs`
 
 Endpoints
@@ -53,7 +58,9 @@ Rodar com Docker (Postgres + API)
 - Acesse a API: `http://127.0.0.1:8000/docs`
 - Containers criados:
   - `buildflow-postgres` (Postgres 16)
+  - `buildflow-rabbit` (RabbitMQ 3 + console em `http://localhost:15672`)
   - `buildflow-api` (FastAPI/uvicorn)
+  - `buildflow-worker` (processamento assíncrono de pedidos)
 
 Testes
 - Instalar dependências de teste (já no `requirements.txt`).
