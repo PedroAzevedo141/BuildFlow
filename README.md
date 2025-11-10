@@ -72,3 +72,4 @@ Testes
 - O suite inclui:
   - Testes de unidade para cálculo de total (`app/services.py`).
   - Testes de integração dos endpoints via `TestClient`.
+- Cada push é validado automaticamente via GitHub Actions (workflow `ci.yml` rodando `pytest`).
